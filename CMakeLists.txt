@@ -2,9 +2,10 @@ cmake_minimum_required(VERSION 3.18)
 
 # Enable both C++ and CUDA languages
 project(cuGrayScott LANGUAGES CXX CUDA)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Enforce C++17
-set(CMAKE_CXX_STANDARD 17)
+# Enforce C++20
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Target Ampere architecture (Compute Capability 8.6 for an RTX 3080)
@@ -14,5 +15,5 @@ set(CMAKE_CUDA_ARCHITECTURES 86)
 # Define our executable
 add_executable(cuGrayScott 
     src/main.cpp 
-    # src/solver.cu  <-- uncomment in Phase 2
+    # src/solver.cu  <-- uncomment later
 )
