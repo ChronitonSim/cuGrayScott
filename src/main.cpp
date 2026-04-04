@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include "io_utils.hpp"
+#include "utils.hpp"
 
 #include <cuda_runtime.h>
 
@@ -24,15 +25,6 @@ constexpr float k {0.065f};
 // Discretization parameters.
 constexpr float h {1.0f};  // Spatial step dx = dy
 constexpr float dt {1.0f}; // Time step
-
-// Row-major linearization of grid nodes.
-// The x dim is indexed by i, so i is the column index;
-// The y dim is indexed by j, so j is the row index.
-// Thus, a node of grid coordinates (j, i) has 
-// linearized coordinate k = j * N_x + i
-inline int getIndex(int col, int row, int width){
-    return row * width + col;
-}
 
 int main() {
     std::cout << "Starting cuGrayScott Initialization...\n";
