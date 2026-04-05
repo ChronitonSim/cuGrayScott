@@ -1,5 +1,7 @@
 #include "solver.cuh"
 #include "utils.hpp"
+#include "io_utils.hpp"
+#include <cuda_runtime_api.h>
 
 __global__
 void grayScottKernel(
@@ -65,5 +67,47 @@ void grayScottKernel(
             d_next_V[simGridIndex] = computeExplicitEulerStepV(u_c, v_c, laplacian_v, dt, Dv, F, k);
         }
     }
-
 }
+
+// Kernel launcher wrapper for the host.
+void runGrayScottStep(
+    const float* d_U, 
+    const float* d_V, 
+    float* d_next_U,  
+    float* d_next_V,  
+    int width, 
+    int height, 
+    float Du, 
+    float Dv, 
+    float F, 
+    float k, 
+    float dt, 
+    float h) {
+
+    // We use 16 by 16 2D thread blocks, for a total of 256 threads.
+    dim3 threadsPerBlock(16, 16);
+
+    // Calculate the number of blocks needed to cover
+    // the simulation grid.
+    dim3 blocksPerGrid((width + 15) / 16, (height + 15) / 16);
+
+    // Launch the kernel.
+    grayScottKernel<<<blocksPerGrid, threadsPerBlock>>> (
+        d_U,
+        d_V,
+        d_next_U,
+        d_next_V,
+        width,
+        height,
+        Du,
+        Dv,
+        F,
+        k,
+        dt,
+        h
+    );
+
+    // Catch any launch errors immediately.
+    cudaCheck(cudaGetLastError());
+    cudaCheck(cudaDeviceSynchronize());
+    }

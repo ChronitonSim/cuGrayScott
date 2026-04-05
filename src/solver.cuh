@@ -1,9 +1,9 @@
 #pragma once
 
-// Forward declaration of the kernel launcher.
+// Public API for the host to launch the Gray-Scott simulation step.
 void runGrayScottStep(
-    float* d_U,
-    float* d_V,
+    const float* d_U,
+    const float* d_V,
     float* d_next_U,
     float* d_next_V,
     int width,
