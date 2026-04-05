@@ -1,7 +1,7 @@
 #include "solver.cuh"
 #include "utils.hpp"
 #include "io_utils.hpp"
-#include <cuda_runtime_api.h>
+#include <cuda_runtime.h>
 
 __global__
 void grayScottKernel(
