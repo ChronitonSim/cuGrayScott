@@ -1,4 +1,6 @@
 #pragma once
+#include <algorithm>
+#include <cmath>
 #include <cuda_runtime.h>
 
 
@@ -10,6 +12,34 @@
 __host__ __device__
 inline int getIndex(const int col, const int row, const int width){
     return row * width + col;
+}
+
+inline dim3 computeHardwareGridDimensions(
+    int sqBlockSize,
+    int numSMs,
+    int width,
+    int height
+) {
+    // Cap the size of the grid to hardware bounds.
+    // A standard heuristic is launching 32 blocks per SM to hide latency.
+    // We take the square root of this maximum number of blocks to find the
+    // maximum size of the 2D grid of blocks.
+    int sqMaxNumBlocks { static_cast<int>(std::sqrt(numSMs * 32)) };
+    
+    // Cap hardware grid size to simulation grid size so we don't launch
+    // more threads than simulation nodes (in case the hardware can spwan
+    // enough blocks to cover the entire simulation grid).
+    int gridDimX {std::min(
+        (width + sqBlockSize - 1) / sqBlockSize,
+        sqMaxNumBlocks
+    )};
+    int gridDimY {std::min(
+        (height + sqBlockSize - 1) / sqBlockSize,
+        sqMaxNumBlocks
+    )};
+
+    dim3 blocksPerGrid(gridDimX, gridDimY);
+    return blocksPerGrid;
 }
 
 __device__
