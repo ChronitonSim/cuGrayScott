@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 
 # Enable both C++ and CUDA languages
 project(cuGrayScott LANGUAGES CXX CUDA)
+find_package(CUDAToolkit REQUIRED)
 
 # Force CMake to put -I include paths directly in compile_commands.json
 # instead of hiding them inside .rsp response files
@@ -25,3 +26,4 @@ add_executable(cuGrayScott_phase1
     src/phase1_naive/main.cpp 
     src/phase1_naive/solver.cu 
 )
+target_link_libraries(cuGrayScott_phase1 PRIVATE CUDA::cudart)
