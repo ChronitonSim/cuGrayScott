@@ -5,42 +5,29 @@
 #include <vector>
 #include <stdexcept>
 #include <algorithm>
+#include <format>
+#include <string>
+#include <cuda_runtime.h>
 #include "io_utils.hpp"
 #include "utils.hpp"
-
-#include <cuda_runtime.h>
-
-
-// Grid dimensions.
-constexpr int N_x {256};
-constexpr int N_y {256};
-
-// Kinetic parameters.
-// These specific values produce a "Coral" Turing pattern.
-constexpr float D_u {0.16f};
-constexpr float D_v {0.08f};
-constexpr float F {0.035f};
-constexpr float k {0.065f};
-
-// Discretization parameters.
-constexpr float h {1.0f};  // Spatial step dx = dy
-constexpr float dt {1.0f}; // Time step
+#include "solver.cuh"
+#include "parameters.hpp"
 
 int main() {
     std::cout << "Starting cuGrayScott Initialization...\n";
 
     // --- STABILITY ANALYSIS CHECK ---
-    float max_D {std::max(D_u, D_v)};
-    float dt_limit { (h * h)/(4.0f * max_D) };
+    float max_D {std::max(Params::D_u, Params::D_v)};
+    float dt_limit { (Params::h * Params::h)/(4.0f * max_D) };
 
-    if (dt > dt_limit)
+    if (Params::dt > dt_limit)
         throw std::runtime_error("Numerical Instability Warning: dt exceeds the von Neumann stability limit.");
 
-    std::cout << "Stability check passed. dt = " << dt << " is <= dt_limit = " << dt_limit << "\n";
+    std::cout << "Stability check passed. dt = " << Params::dt << " is <= dt_limit = " << dt_limit << "\n";
 
     // --- HOST MEMORY ALLOCATION ---   
     // Total number of grid points.
-    const int numNodes {N_x * N_y};
+    const int numNodes {Params::N_x * Params::N_y};
 
     // Host vectors for U and V concentrations.
     // Flattened 1D arrays for contiguous memory mapping.
@@ -48,20 +35,20 @@ int main() {
     std::vector<float> h_V(numNodes, 0.0f);
 
     // Initialize a central square to seed the reaction.
-    int centerX {N_x / 2};  // Floor division.
-    int centerY {N_y / 2};
+    int centerX {Params::N_x / 2};  // Floor division.
+    int centerY {Params::N_y / 2};
     int squareSize {20};
 
     for (int y {centerY - squareSize / 2}; y < centerY + squareSize / 2; ++y) {
         for (int x {centerX - squareSize / 2}; x < centerX + squareSize / 2; ++x) {
-            int index = getIndex(x, y, N_x);
+            int index = getIndex(x, y, Params::N_x);
             h_U[index] = 0.5f;  // Deplete U.
             h_V[index] = 0.25f; // Inject V.
         }
     }
 
     std::cout << "Host memory allocated and initialized successfully.\n";
-    std::cout << "Grid size: " << N_x << " x " << N_y << " points.\n";
+    std::cout << "Grid size: " << Params::N_x << " x " << Params::N_y << " points.\n";
 
     // --- DEVICE MEMORY ALLOCATION ---
     std::cout << "Allocating device memory...\n";
@@ -93,8 +80,60 @@ int main() {
     cudaCheck(cudaMemcpy(d_next_U, h_U.data(), bytes, cudaMemcpyHostToDevice));
     cudaCheck(cudaMemcpy(d_next_V, h_V.data(), bytes, cudaMemcpyHostToDevice));
 
+    // --- SIMULATION PARAMETERS ---
+    constexpr int numSteps {10'000};
+    constexpr int outputFrequency {100}; 
+
+    // --- HARDWARE GRID CONFIGURATION ---
+    // Query the GPU hardware for the number of SMs.
+    int deviceId;
+    cudaCheck(cudaGetDevice(&deviceId));
+    int numSMs;
+    cudaCheck(cudaDeviceGetAttribute(&numSMs, cudaDevAttrMultiProcessorCount, deviceId));
+    
+    // We use 16 by 16 2D thread blocks, for a total of 256 threads.
+    int sqBlockSize {16};
+    dim3 threadsPerBlock(sqBlockSize, sqBlockSize);
+    dim3 blocksPerGrid = computeHardwareGridDimensions(sqBlockSize, numSMs, Params::N_x, Params::N_y);
+    
     // --- SIMULATION LOOP ---
-    // coming next
+    std::string config_msg = std::format(
+        "Starting simulation loop with:\n{} time steps\n{} output frequency\n({},{}) 2D block\n({},{}) 2D grid",
+        numSteps,
+        outputFrequency,
+        threadsPerBlock.x,
+        threadsPerBlock.y,
+        blocksPerGrid.x,
+        blocksPerGrid.y
+    );
+    std::cout << config_msg << "\n";
+
+    for (int step{0}; step < numSteps; ++step) {
+
+        // Output data periodically.
+        if (step % outputFrequency == 0) {
+            std::cout << "Step " << step << " / " << numSteps << " - Extracting frame...\n";
+
+            // Copying V is enough to visualize the pattern.
+            cudaCheck(cudaMemcpy(h_V.data(), d_V, bytes, cudaMemcpyDeviceToHost));
+
+            // Coming soon: write h_V to disk as a binary file.
+        }
+
+        runGrayScottStep(
+            d_U, 
+            d_V, 
+            d_next_U, 
+            d_next_V, 
+            threadsPerBlock, 
+            blocksPerGrid
+        );
+
+        // Ping-Pong the pointers.
+        // The newly computed state becomes the current state for the next loop iteration.
+        std::swap(d_U, d_next_U);
+        std::swap(d_V, d_next_V);
+    }
 
     // --- CLEAN UP ---
     std::cout << "Freeing device memory...\n";
@@ -102,6 +141,8 @@ int main() {
     cudaCheck(cudaFree(d_V));
     cudaCheck(cudaFree(d_next_U));
     cudaCheck(cudaFree(d_next_V));
+
+    std::cout << "Simulation complete.\n";
 
     return 0;
 
