@@ -1,7 +1,10 @@
 #include "solver.cuh"
 #include "utils.hpp"
 #include "io_utils.hpp"
+#include <cuda_device_runtime_api.h>
 #include <cuda_runtime.h>
+#include <driver_types.h>
+#include <cmath>
 
 __global__
 void grayScottKernel(
@@ -25,6 +28,10 @@ void grayScottKernel(
     // Calculate the total hardware grid span, i.e. the stride.
     int stride_x = blockDim.x * gridDim.x;
     int stride_y = blockDim.y * gridDim.y;
+
+    // Note: when the hardware grid covers the entire simulation
+    // grid, stride_x and stride_y evaluate to exactly width and
+    // height, so the for loop below executes only once per thread.
 
     // 2D grid-stride loop to cover the entire simulation grid.
     for (int y {start_y}; y < height; y += stride_y) {
@@ -85,11 +92,34 @@ void runGrayScottStep(
     float h) {
 
     // We use 16 by 16 2D thread blocks, for a total of 256 threads.
-    dim3 threadsPerBlock(16, 16);
+    int sqBlockSize = 16;
+    dim3 threadsPerBlock(sqBlockSize, sqBlockSize);
 
-    // Calculate the number of blocks needed to cover
-    // the simulation grid.
-    dim3 blocksPerGrid((width + 15) / 16, (height + 15) / 16);
+    // Query the GPU hardware for the number of SMs.
+    int deviceId;
+    cudaCheck(cudaGetDevice(&deviceId));
+    int numSMs;
+    cudaCheck(cudaDeviceGetAttribute(&numSMs, cudaDevAttrMultiProcessorCount, deviceId));
+
+    // Cap the size of the grid to hardware bounds.
+    // A standard heuristic is launching 32 blocks per SM to hide latency.
+    // We take the square root of this maximum number of blocks to find the
+    // maximum size of the 2D grid of blocks.
+    int sqMaxNumBlocks = static_cast<int>(std::sqrt(numSMs * 32));
+    
+    // Cap hardware grid size to simulation grid size so we don't launch
+    // more threads than simulation nodes (in case the hardware can spwan
+    // enough blocks to cover the entire simulation grid).
+    int gridDimX = std::min(
+        (width + sqBlockSize - 1) / sqBlockSize,
+        sqMaxNumBlocks
+    );
+    int gridDimY = std::min(
+        (height + sqBlockSize - 1) / sqBlockSize,
+        sqMaxNumBlocks
+    );
+
+    dim3 blocksPerGrid(gridDimX, gridDimY);
 
     // Launch the kernel.
     grayScottKernel<<<blocksPerGrid, threadsPerBlock>>> (
