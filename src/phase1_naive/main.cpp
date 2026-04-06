@@ -8,6 +8,7 @@
 #include <format>
 #include <string>
 #include <cuda_runtime.h>
+#include <filesystem>
 #include "io_utils.hpp"
 #include "utils.hpp"
 #include "solver.cuh"
@@ -95,6 +96,13 @@ int main() {
     int sqBlockSize {16};
     dim3 threadsPerBlock(sqBlockSize, sqBlockSize);
     dim3 blocksPerGrid = computeHardwareGridDimensions(sqBlockSize, numSMs, Params::N_x, Params::N_y);
+
+    // --- CREATE OUTPUT DIRECTORY ---
+    std::string outDir = "out";
+    if (!std::filesystem::exists(outDir)) {
+        std::filesystem::create_directories(outDir);
+        std::cout << "Created output directory: " << outDir << "\n";
+    }
     
     // --- SIMULATION LOOP ---
     std::string config_msg = std::format(
@@ -117,7 +125,7 @@ int main() {
             // Copying V is enough to visualize the pattern.
             cudaCheck(cudaMemcpy(h_V.data(), d_V, bytes, cudaMemcpyDeviceToHost));
 
-            // Coming soon: write h_V to disk as a binary file.
+            writeBinaryFrame(h_V, step);
         }
 
         runGrayScottStep(
