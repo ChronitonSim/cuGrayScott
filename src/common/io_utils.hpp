@@ -31,7 +31,7 @@ inline void writeBinaryFrame(const std::vector<float>& data, int step) {
     // d specifies that the input is a base 10 decimal integer.
     // When sorting the files alphabetically, this ensures that 
     // frame_0002.bin correctly comes before frame_0010.bin.
-    std::string filename = std::format("out/frame_{:04d}.bin", step);
+    std::string filename = std::format("out/frame_{:06d}.bin", step);
 
     // Open file in binary mode, and overwrite (truncate) if it exists.
     // Uses bitmasking (bitwise OR) to obtain a combined flag for both
