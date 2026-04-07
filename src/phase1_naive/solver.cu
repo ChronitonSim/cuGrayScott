@@ -29,33 +29,22 @@ void grayScottKernel(
     // 2D grid-stride loop to cover the entire simulation grid.
     for (int y {start_y}; y < Params::N_y; y += stride_y) {
         for (int x {start_x}; x < Params::N_x; x += stride_x) {
-
-            // Calculate the 1D simulation grid index for (x, y).
-            int simGridIndex = getIndex(x, y, Params::N_x);
-
-            // Handle boundaries in an elementary way (for now).
-            // If a thread is on the edge of the simulation grid,
-            // simply copy d_U to d_next_U and d_V to d_next_V.
-            if (x == 0 || x == Params::N_x - 1 || y == 0 || y == Params::N_y - 1) {
-                d_next_U[simGridIndex] = d_U[simGridIndex];
-                d_next_V[simGridIndex] = d_V[simGridIndex];
-                continue;
-            }
             
             // Fetch values of U and V for the center of the stencil.
-            float u_c {d_U[simGridIndex]};
-            float v_c {d_V[simGridIndex]};
+            int centerStencilIndex = getIndex(x, y, Params::N_x);
+            float u_c {d_U[centerStencilIndex]};
+            float v_c {d_V[centerStencilIndex]};
 
             // Fetch neighbor values. 
-            float u_south {d_U[getIndex(x, y - 1, Params::N_x)]};
-            float u_north {d_U[getIndex(x, y + 1, Params::N_x)]};
-            float u_east {d_U[getIndex(x + 1, y, Params::N_x)]};
-            float u_west {d_U[getIndex(x - 1, y, Params::N_x)]};
+            float u_south {d_U[getWrappedIndex(x, y - 1, Params::N_x, Params::N_y)]};
+            float u_north {d_U[getWrappedIndex(x, y + 1, Params::N_x, Params::N_y)]};
+            float u_east {d_U[getWrappedIndex(x + 1, y, Params::N_x, Params::N_y)]};
+            float u_west {d_U[getWrappedIndex(x - 1, y, Params::N_x, Params::N_y)]};
             
-            float v_south {d_V[getIndex(x, y - 1, Params::N_x)]};
-            float v_north {d_V[getIndex(x, y + 1, Params::N_x)]};
-            float v_east {d_V[getIndex(x + 1, y, Params::N_x)]};
-            float v_west {d_V[getIndex(x - 1, y, Params::N_x)]};
+            float v_south {d_V[getWrappedIndex(x, y - 1, Params::N_x, Params::N_y)]};
+            float v_north {d_V[getWrappedIndex(x, y + 1, Params::N_x, Params::N_y)]};
+            float v_east {d_V[getWrappedIndex(x + 1, y, Params::N_x, Params::N_y)]};
+            float v_west {d_V[getWrappedIndex(x - 1, y, Params::N_x, Params::N_y)]};
 
             // Compute spatial Laplacians for U and V.
             float laplacian_u {computeLaplacian(
@@ -77,7 +66,7 @@ void grayScottKernel(
             };
 
             // Compute explicit Euler time steps and write them to d_next_U and d_next_V
-            d_next_U[simGridIndex] = computeExplicitEulerStepU(
+            d_next_U[centerStencilIndex] = computeExplicitEulerStepU(
                 u_c, 
                 v_c, 
                 laplacian_u, 
@@ -85,7 +74,7 @@ void grayScottKernel(
                 Params::D_u, 
                 Params::F
             );
-            d_next_V[simGridIndex] = computeExplicitEulerStepV(
+            d_next_V[centerStencilIndex] = computeExplicitEulerStepV(
                 u_c, 
                 v_c, 
                 laplacian_v, 

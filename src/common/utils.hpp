@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cuda_runtime.h>
+#include <device_types.h>
 
 
 // Row-major linearization of grid nodes.
@@ -10,8 +11,21 @@
 // Thus, a node of grid coordinates (j, i) has 
 // linearized coordinate k = j * N_x + i
 __host__ __device__
-inline int getIndex(const int col, const int row, const int width){
-    return row * width + col;
+inline int getIndex(const int x, const int y, const int width){
+    return y * width + x;
+}
+
+// Wraps coordinates for Periodic Boundary Conditions.
+// E.g. an x value of -1 wraps to (width - 1). 
+// Because -1 % 256 = -1 (% truncates integer division toward zero, 
+// forcing the remainder to take the sign of the dividend),
+// we add the dimension size before we wrap using the modulo.
+__host__ __device__
+inline int getWrappedIndex(const int x, const int y, const int width, const int height) {
+    int wrapped_x = (x + width) % width;
+    int wrapped_y = (y + height) % height;
+
+    return wrapped_y * width + wrapped_x;
 }
 
 inline dim3 computeHardwareGridDimensions(
@@ -78,4 +92,3 @@ inline float computeExplicitEulerStepV(
 ) {
     return centerV + dt * (D * laplacian + centerU * centerV * centerV - (F + k) * centerV);
 }
-

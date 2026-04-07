@@ -82,7 +82,7 @@ int main() {
     cudaCheck(cudaMemcpy(d_next_V, h_V.data(), bytes, cudaMemcpyHostToDevice));
 
     // --- SIMULATION PARAMETERS ---
-    constexpr int numSteps {10'000};
+    constexpr int numSteps {50'000};
     constexpr int outputFrequency {100}; 
 
     // --- HARDWARE GRID CONFIGURATION ---
