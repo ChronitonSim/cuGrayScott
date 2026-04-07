@@ -15,9 +15,10 @@ def load_frame(filename):
     return np.fromfile(filename, dtype=np.float32).reshape((N_Y, N_X))
 
 def main():
-    # Grab all binary files and sort them alphabetically
-    # Because we padded with zeros (frame_0000.bin), they will sort in perfect chronological order
-    files = sorted(glob.glob('../out/frame_*.bin'))
+    # Grab all binary files and sort them numerically
+    files = glob.glob('../out/frame_*.bin')
+    # Extract the number from "frame_XXXX.bin" and sort numerically
+    files.sort(key=lambda f: int(f.split('_')[1].split('.')[0]))
     
     if not files:
         print("Error: No .bin files found in out/")
