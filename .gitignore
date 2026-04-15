@@ -9,4 +9,5 @@
 .clangd
 build
 compile_commands.json
-out
+out_phase1
+out_phase2
