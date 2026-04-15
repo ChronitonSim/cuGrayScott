@@ -98,7 +98,7 @@ int main() {
     dim3 blocksPerGrid = computeHardwareGridDimensions(sqBlockSize, numSMs, Params::N_x, Params::N_y);
 
     // --- CREATE OUTPUT DIRECTORY ---
-    std::string outDir = "out";
+    std::string outDir = "out_phase1";
     if (!std::filesystem::exists(outDir)) {
         std::filesystem::create_directories(outDir);
         std::cout << "Created output directory: " << outDir << "\n";
