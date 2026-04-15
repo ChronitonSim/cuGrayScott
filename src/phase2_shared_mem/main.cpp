@@ -98,7 +98,7 @@ int main() {
     dim3 blocksPerGrid = computeHardwareGridDimensions(sqBlockSize, numSMs, Params::N_x, Params::N_y);
 
     // --- CREATE OUTPUT DIRECTORY ---
-    std::string outDir = "out_phase2";
+    std::string outDir = "../out_phase2";
     if (!std::filesystem::exists(outDir)) {
         std::filesystem::create_directories(outDir);
         std::cout << "Created output directory: " << outDir << "\n";
@@ -125,7 +125,7 @@ int main() {
             // Copying V is enough to visualize the pattern.
             cudaCheck(cudaMemcpy(h_V.data(), d_V, bytes, cudaMemcpyDeviceToHost));
 
-            writeBinaryFrame(h_V, step);
+            writeBinaryFrame(h_V, step, outDir);
         }
 
         runGrayScottStep(

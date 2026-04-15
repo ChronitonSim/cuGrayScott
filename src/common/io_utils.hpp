@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <string_view>
 #include <format>
 #include <source_location>
 #include <stdexcept>
@@ -21,8 +22,11 @@ inline void cudaCheck(cudaError_t err,
     }
 }
 
-inline void writeBinaryFrame(const std::vector<float>& data, int step) {
-    
+inline void writeBinaryFrame(
+    const std::vector<float>& data, 
+    int step,
+    std::string_view outDir
+) {
     // Generate a padded filename (e.g. out/frame_0100.bin).
     // Dissecting {:04d}:
     // : indicates the start of the formatting rules
@@ -31,7 +35,7 @@ inline void writeBinaryFrame(const std::vector<float>& data, int step) {
     // d specifies that the input is a base 10 decimal integer.
     // When sorting the files alphabetically, this ensures that 
     // frame_0002.bin correctly comes before frame_0010.bin.
-    std::string filename = std::format("out/frame_{:06d}.bin", step);
+    std::string filename = std::format("{}/frame_{:06d}.bin", outDir, step);
 
     // Open file in binary mode, and overwrite (truncate) if it exists.
     // Uses bitmasking (bitwise OR) to obtain a combined flag for both
