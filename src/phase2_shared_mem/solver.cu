@@ -17,12 +17,12 @@ void grayScottKernelShared(
     // tile of the simulation grid.
 
     // Thread indices at the block level.
-    int tx {threadIdx.x};
-    int ty {threadIdx.y};
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
 
     // Global thread indices.
-    int global_tx {blockIdx.x * blockDim.x + tx};
-    int global_ty {blockIdx.y * blockDim.y + ty};
+    int globalTx = blockIdx.x * blockDim.x + tx;
+    int globalTy = blockIdx.y * blockDim.y + ty;
 
     // --- Shared memory allocation ---
     // Add one border cell on all sides of the 16 x 16 tile.
@@ -30,7 +30,7 @@ void grayScottKernelShared(
     constexpr int SHARED_DIM {TILE_SIZE + 2};
 
     __shared__ float s_U[SHARED_DIM][SHARED_DIM];
-    __shared__ float s_v[SHARED_DIM][SHARED_DIM];
+    __shared__ float s_V[SHARED_DIM][SHARED_DIM];
 
     // --- Collaborative loading ---
     // Every thread loads exactly one cell from global memory
@@ -38,15 +38,15 @@ void grayScottKernelShared(
 
     // Define shared memory indices for the core 16 x 16
     // compute tile. Add 1 to tx and ty to avoid the border rim.
-    int sx {sx + 1};
-    int sy {sy + 1};
+    int sx {tx + 1};
+    int sy {ty + 1};
 
     // Define the global memory index for the core tile.
     // Use getWrappedIndex so that if the block is on the edge 
     // of the simulation grid, the index wraps.
-    int global_idx {getWrappedIndex(global_tx, global_ty, Params::N_x, Params::N_y)};
-    s_U[s_y][s_x] = d_U[global_idx];
-    s_V[s_y][s_x] = d_V[global_idx];
+    int globalIdx {getWrappedIndex(globalTx, globalTy, Params::N_x, Params::N_y)};
+    s_U[sy][sx] = d_U[globalIdx];
+    s_V[sy][sx] = d_V[globalIdx];
 
     // --– Load the border (halo) cells ---
     // Threads on the edges must supply the border cell too.
@@ -74,7 +74,7 @@ void runGrayScottStep(
     dim3 blocksPerGrid
 ) {
     // Launch the kernel.
-    grayScottKernel<<<blocksPerGrid, threadsPerBlock>>> (
+    grayScottKernelShared<<<blocksPerGrid, threadsPerBlock>>> (
         d_U,
         d_V,
         d_next_U,
