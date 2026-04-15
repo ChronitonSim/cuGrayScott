@@ -50,7 +50,40 @@ void grayScottKernelShared(
 
     // --– Load the border (halo) cells ---
     // Threads on the edges must supply the border cell too.
-    // Coming soon.
+    // Use thread-block indices tx, ty to identify threads on 
+    // the edges of the tile.
+    // Note: the four corners of the tile (0,0), (0, 17), (17,0), 
+    // and (17, 17) are left uninitialized, because they are not 
+    // needed to compute the Laplacian stencil 
+    // (which does not read diagonally).
+
+    // West edge
+    if (tx == 0) {
+        int westIdx {getWrappedIndex(globalTx - 1, globalTy, Params::N_x, Params::N_y)};
+        s_U[sy][0] = d_U[westIdx];
+        s_V[sy][0] = d_V[westIdx];
+    }
+
+    // East edge
+    if (tx == TILE_SIZE - 1) {
+        int eastIdx {getWrappedIndex(globalTx + 1, globalTy, Params::N_x, Params::N_y)};
+        s_U[sy][SHARED_DIM - 1] = d_U[eastIdx];
+        s_V[sy][SHARED_DIM - 1] = d_V[eastIdx];
+    }
+
+    // North edge
+    if (ty == 0) {
+        int northIdx {getWrappedIndex(globalTx, globalTy - 1, Params::N_x, Params::N_y)};
+        s_U[0][sx] = d_U[northIdx];
+        s_V[0][sx] = d_V[northIdx];
+    }
+
+    // South Edge
+    if (ty == TILE_SIZE - 1) {
+        int southIdx {getWrappedIndex(globalTx, globalTy + 1, Params::N_x, Params::N_y)};
+        s_U[SHARED_DIM - 1][sx] = d_U[southIdx];
+        s_V[SHARED_DIM - 1][sx] = d_V[southIdx];
+    }
 
     // --- Synchronization barrier ---
     // Force all 256 threads in the block to wait here until 
