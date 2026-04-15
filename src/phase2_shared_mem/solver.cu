@@ -16,7 +16,8 @@ void grayScottKernelShared(
     // One thread block computes exactly one 16 x 16
     // tile of the simulation grid.
 
-    // Thread indices at the block level.
+    // Thread indices at the block level 
+    // Range (0 - 15).
     int tx = threadIdx.x;
     int ty = threadIdx.y;
 
@@ -29,7 +30,7 @@ void grayScottKernelShared(
     constexpr int TILE_SIZE {16};
     constexpr int SHARED_DIM {TILE_SIZE + 2};
 
-    __shared__ float s_U[SHARED_DIM][SHARED_DIM];
+    __shared__ float s_U[SHARED_DIM][SHARED_DIM]; // Range (0 - 17).
     __shared__ float s_V[SHARED_DIM][SHARED_DIM];
 
     // --- Collaborative loading ---
@@ -38,6 +39,7 @@ void grayScottKernelShared(
 
     // Define shared memory indices for the core 16 x 16
     // compute tile. Add 1 to tx and ty to avoid the border rim.
+    // Range (1 - 16).
     int sx {tx + 1};
     int sy {ty + 1};
 
@@ -92,9 +94,58 @@ void grayScottKernelShared(
 
     // --- Compute and write back ---
     // Perform the 5-point stencil reading only from s_U and
-    // s_V, then write the result to d_next_U[global_idx].
-    // Coming soon.
+    // s_V, then write the result to d_next_U/V[global_idx].
+
+    float u_c {s_U[sy][sx]};
+    float u_south {s_U[sy + 1][sx]};
+    float u_north {s_U[sy - 1][sx]};
+    float u_east {s_U[sy][sx + 1]};
+    float u_west {s_U[sy][sx - 1]};
+
+    float v_c {s_V[sy][sx]};
+    float v_south {s_V[sy + 1][sx]};
+    float v_north {s_V[sy - 1][sx]};
+    float v_east {s_V[sy][sx + 1]};
+    float v_west {s_V[sy][sx - 1]};
     
+    // Compute spatial Laplacians for U and V.
+    float laplacian_u {computeLaplacian(
+        u_c, 
+        u_south, 
+        u_north, 
+        u_east, 
+        u_west, 
+        Params::h)
+    };
+
+    float laplacian_v {computeLaplacian(
+        v_c, 
+        v_south, 
+        v_north, 
+        v_east, 
+        v_west, 
+        Params::h)
+    };
+
+    // Compute explicit Euler time steps and write them to d_next_U and d_next_V
+    d_next_U[globalIdx] = computeExplicitEulerStepU(
+        u_c, 
+        v_c, 
+        laplacian_u, 
+        Params::dt, 
+        Params::D_u, 
+        Params::F
+    );
+
+    d_next_V[globalIdx] = computeExplicitEulerStepV(
+        u_c, 
+        v_c, 
+        laplacian_v, 
+        Params::dt, 
+        Params::D_v, 
+        Params::F, 
+        Params::k
+    );
 }
 
 // Kernel launcher wrapper for the host.
