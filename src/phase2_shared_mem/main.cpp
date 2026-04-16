@@ -13,6 +13,7 @@
 #include "utils.hpp"
 #include "solver.cuh"
 #include "parameters.hpp"
+#include "timer.hpp"
 
 int main() {
     std::cout << "Starting cuGrayScott Initialization...\n";
@@ -82,8 +83,9 @@ int main() {
     cudaCheck(cudaMemcpy(d_next_V, h_V.data(), bytes, cudaMemcpyHostToDevice));
 
     // --- SIMULATION PARAMETERS ---
-    constexpr int numSteps {50'000};
+    constexpr int numSteps {1000};
     constexpr int outputFrequency {100}; 
+    constexpr bool ENABLE_IO {false};
 
     // --- HARDWARE GRID CONFIGURATION ---
     // Query the GPU hardware for the number of SMs.
@@ -116,10 +118,14 @@ int main() {
     );
     std::cout << config_msg << "\n";
 
+    // Initialize and start the CUDA timer.
+    CudaTimer timer;
+    timer.start();
+
     for (int step{0}; step < numSteps; ++step) {
 
         // Output data periodically.
-        if (step % outputFrequency == 0) {
+        if (ENABLE_IO && step % outputFrequency == 0) {
             std::cout << "Step " << step << " / " << numSteps << " - Extracting frame...\n";
 
             // Copying V is enough to visualize the pattern.
@@ -138,10 +144,22 @@ int main() {
         );
 
         // Ping-Pong the pointers.
-        // The newly computed state becomes the current state for the next loop iteration.
+        // The newly computed state becomes 
+        // the current state for the next 
+        // loop iteration.
         std::swap(d_U, d_next_U);
         std::swap(d_V, d_next_V);
     }
+
+    // Stop the CUDA timer and
+    // print the results.
+    float elapsed_ms {timer.stop()};
+
+    std::cout << "Simulation complete.\n";
+    std::cout << "========================================\n";
+    std::cout << "Total Compute Time: " << elapsed_ms << " ms\n";
+    std::cout << "Average Time/Step : " << elapsed_ms / numSteps << " ms\n";
+    std::cout << "========================================\n";
 
     // --- CLEAN UP ---
     std::cout << "Freeing device memory...\n";
@@ -155,6 +173,3 @@ int main() {
     return 0;
 
 }
-
-
-
