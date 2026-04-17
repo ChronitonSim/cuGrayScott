@@ -4,8 +4,8 @@
 namespace Params {
 
     // Simulation grid dimensions.
-    constexpr int N_x {256};
-    constexpr int N_y {256};
+    constexpr int N_x {4096};
+    constexpr int N_y {4096};
 
     // Kinetic parameters.
     // These specific values produce a "Coral" Turing pattern.
