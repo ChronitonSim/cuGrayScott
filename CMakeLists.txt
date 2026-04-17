@@ -33,3 +33,11 @@ add_executable(cuGrayScott_phase2
 )
 target_include_directories(cuGrayScott_phase2 PRIVATE src/common)
 target_link_libraries(cuGrayScott_phase2 PRIVATE CUDA::cudart)
+
+# Phase 3 asynchronous pipeline executable
+add_executable(cuGrayScott_phase3 
+    src/phase3_async/main.cpp 
+    src/phase3_async/solver.cu 
+)
+target_include_directories(cuGrayScott_phase3 PRIVATE src/common)
+target_link_libraries(cuGrayScott_phase3 PRIVATE CUDA::cudart)
