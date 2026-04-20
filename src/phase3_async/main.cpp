@@ -2,11 +2,11 @@
 #include <cuda_runtime_api.h>
 #include <driver_types.h>
 #include <iostream>
-#include <vector>
 #include <stdexcept>
 #include <algorithm>
 #include <format>
 #include <string>
+#include <future>
 #include <cuda_runtime.h>
 #include <filesystem>
 #include "io_utils.hpp"
@@ -124,22 +124,25 @@ int main() {
     );
     std::cout << config_msg << "\n";
 
+    // Create separate streams for computation
+    // and data transfer.
+    cudaStream_t computeStream;
+    cudaStream_t transferStream;
+    cudaCheck(cudaStreamCreate(&computeStream));
+    cudaCheck(cudaStreamCreate(&transferStream));
+
+    // Variable to hold the background
+    // I/O thread.
+    std::future<void> io_thread;
+
     // Initialize and start the CUDA timer.
     CudaTimer timer;
     timer.start();
 
     for (int step{0}; step < numSteps; ++step) {
 
-        // Output data periodically.
-        if (ENABLE_IO && step % outputFrequency == 0) {
-            std::cout << "Step " << step << " / " << numSteps << " - Extracting frame...\n";
-
-            // Copying V is enough to visualize the pattern.
-            cudaCheck(cudaMemcpy(h_V, d_V, bytes, cudaMemcpyDeviceToHost));
-
-            writeBinaryFrameAsync(h_V, bytes, step, outDir);
-        }
-
+        // Launch the compute kernel
+        // in the compute stream.
         runGrayScottStep(
             d_U, 
             d_V, 
@@ -147,7 +150,57 @@ int main() {
             d_next_V, 
             threadsPerBlock, 
             blocksPerGrid,
+            computeStream
         );
+
+        // Output data periodically.
+        if (ENABLE_IO && step % outputFrequency == 0) {
+            
+            // Wait for the compute stream to finish
+            // calculating the current step before we 
+            // try to copy the result.
+            cudaCheck(cudaStreamSynchronize(computeStream));
+            
+            // Wait for any previous disk writes to 
+            // finish, to prevent overwriting h_V
+            // while the CPU is still saving it.
+
+            // Check the std::future is associated
+            // with a task.
+            if (io_thread.valid()) 
+                // Pause the main thread until the 
+                // result becomes available.
+                io_thread.wait();
+            
+
+            // Asynchronously copy from device to host
+            // using the transfer stream. Since h_V
+            // is pinned memory, the GPU's DMA can
+            // handle this in the background.
+            cudaCheck(cudaMemcpyAsync(
+                h_V, 
+                d_V, 
+                bytes, 
+                cudaMemcpyDeviceToHost,
+                transferStream
+            ));
+            
+            // Wait for the data transfer to finish
+            // before writing to disk.
+            cudaCheck(cudaStreamSynchronize(transferStream));
+
+            // Launch a background CPU thread to write 
+            // to SSD. The main thread immediately loops
+            // back and launches the next compute kernel
+            // while this file is saving.
+            io_thread = std::async(
+                std::launch::async,  // ensure a dedicated thread is spawn
+                [h_V, bytes, step, outDir]() {
+                    writeBinaryFrameAsync(h_V, bytes, step, outDir);
+                    std::cout << "Step " << step << " saved.\n";
+                }
+            );
+        }
 
         // Ping-Pong the pointers.
         // The newly computed state becomes 
@@ -156,6 +209,11 @@ int main() {
         std::swap(d_U, d_next_U);
         std::swap(d_V, d_next_V);
     }
+
+    // Make sure the very last frame finishes
+    // saving before the program exits.
+    if (io_thread.valid())
+        io_thread.wait();
 
     // Stop the CUDA timer and
     // print the results.
@@ -177,6 +235,7 @@ int main() {
     cudaCheck(cudaFree(d_V));
     cudaCheck(cudaFree(d_next_U));
     cudaCheck(cudaFree(d_next_V));
+    cudaCheck(cudaStreamDestroy(computeStream));
 
     std::cout << "Simulation complete.\n";
 
