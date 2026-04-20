@@ -135,9 +135,11 @@ int main() {
     // I/O thread.
     std::future<void> io_thread;
 
-    // Initialize and start the CUDA timer.
+    // Initialize and start the CUDA timer 
+    // on the compute stream, to measure 
+    // only computations and not data transfers.
     CudaTimer timer;
-    timer.start();
+    timer.start(computeStream);
 
     for (int step{0}; step < numSteps; ++step) {
 
@@ -217,7 +219,7 @@ int main() {
 
     // Stop the CUDA timer and
     // print the results.
-    float elapsed_ms {timer.stop()};
+    float elapsed_ms {timer.stop(computeStream)};
 
     std::cout << "Simulation complete.\n";
     std::cout << "========================================\n";
@@ -236,6 +238,7 @@ int main() {
     cudaCheck(cudaFree(d_next_U));
     cudaCheck(cudaFree(d_next_V));
     cudaCheck(cudaStreamDestroy(computeStream));
+    cudaCheck(cudaStreamDestroy(transferStream));
 
     std::cout << "Simulation complete.\n";
 
