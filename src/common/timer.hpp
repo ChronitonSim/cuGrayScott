@@ -2,6 +2,7 @@
 
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
+#include <driver_types.h>
 #include "io_utils.hpp"
 
 class CudaTimer {
@@ -32,7 +33,7 @@ class CudaTimer {
             cudaEventDestroy(stop_event);
         }
 
-        void start() {
+        void start(cudaStream_t stream = 0) {
             // The CPU drops a timestamp into the device's 
             // default stream, and moves on immediately. 
             // When the GPU encounters the event in its stream
@@ -40,15 +41,21 @@ class CudaTimer {
             // and stores it in the driver.
             // To be used right before the section of code to 
             // be timed.
-            cudaCheck(cudaEventRecord(start_event));
+            cudaCheck(cudaEventRecord(
+                start_event,
+                stream
+            ));
         }
 
-        float stop() {
+        float stop(cudaStream_t stream = 0) {
             
             // Again, drop a timestamp in the default stream.
             // To be used right after the section of code to
             // be timed.
-            cudaCheck(cudaEventRecord(stop_event));
+            cudaCheck(cudaEventRecord(
+                stop_event,
+                stream
+            ));
 
             // The CPU halts and waits for a device signal over 
             // the PCI-e bus. The signal arrives once the GPU
