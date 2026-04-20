@@ -135,9 +135,9 @@ int main() {
             std::cout << "Step " << step << " / " << numSteps << " - Extracting frame...\n";
 
             // Copying V is enough to visualize the pattern.
-            cudaCheck(cudaMemcpy(h_V.data(), d_V, bytes, cudaMemcpyDeviceToHost));
+            cudaCheck(cudaMemcpy(h_V, d_V, bytes, cudaMemcpyDeviceToHost));
 
-            writeBinaryFrame(h_V, step, outDir);
+            writeBinaryFrameAsync(h_V, bytes, step, outDir);
         }
 
         runGrayScottStep(

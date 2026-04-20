@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <format>
@@ -49,5 +50,22 @@ inline void writeBinaryFrame(
     // Reinterpret our float data buffer as a buffr of raw bytes,
     // of conventional type (const char*).
     out.write(reinterpret_cast<const char*>(data.data()), data.size() * sizeof(float));
+    out.close();
+}
+
+inline void writeBinaryFrameAsync(
+    const float* data, 
+    std::size_t size,
+    int step,
+    std::string_view outDir
+) {
+    std::string filename = std::format("{}/frame_{:06d}.bin", outDir, step);
+
+    std::ofstream out(filename, std::ios::binary | std::ios::trunc);
+    
+    if (!out.is_open())
+        throw std::runtime_error("Failed to open file for writing: " + filename);
+
+    out.write(reinterpret_cast<const char*>(data), size);
     out.close();
 }
