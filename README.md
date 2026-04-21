@@ -25,16 +25,17 @@ The baseline implementation maps the 2D simulation grid to a 1D linearized memor
 Phase 2 fundamentally restructures memory access by leveraging the Streaming Multiprocessor's (SM) on-chip Shared Memory. It replaces the grid-stride loop with a block-stride loop. Thread blocks cooperatively load 16x16 compute tiles—padded by a 1-cell border to accommodate the stencil's "halo" cells—directly into L1-speed SMEM. After hardware synchronization (`__syncthreads()`), the FDM math executes entirely on-chip, reducing redundant global VRAM transactions by roughly 80%.
 *(For deep architectural mechanics, including bank conflict resolution and cache behaviors, see `src/phase2_shared_mem/README.md`)*
 
-### Phase 3: Asynchronous Pipelining (Planned)
-While Phase 2 optimizes the compute kernel, the host-to-device data pipeline remains strictly synchronous, bottlenecked by PCIe transfers and SSD I/O limits. Phase 3 introduces Asynchronous Execution. By allocating Pinned (Page-Locked) host memory and deploying concurrent CUDA Streams, the pipeline will hide file I/O latency entirely, allowing the GPU to compute $t_{n+1}$ simultaneously while the CPU writes $t_{n}$ to physical storage.
+### Phase 3: Asynchronous Pipelining
+While Phase 2 optimizes the compute kernel, the host-to-device data pipeline remains strictly synchronous, bottlenecked by PCIe transfers and SSD I/O limits. Phase 3 introduces Asynchronous Execution. By allocating Pinned (Page-Locked) host memory and deploying concurrent CUDA Streams, the pipeline hides file I/O latency entirely, allowing the GPU to compute $t_{n+1}$ simultaneously while the CPU writes $t_{n}$ to physical storage.
 *(For flow execution and stream analysis, see `src/phase3_async/README.md`)*
 
-### Phase 4: Full Hardware Asynchronous Pipelining (Planned)
-Phase 3 still requires the CPU's main loop to synchronize and wait for the PCIe transfer to complete before delegating the disk write. Phase 4 will introduce CUDA Hardware Events (`cudaEvent_t`), completely decoupling the CPU from the GPU streams. By moving all synchronization inside the background threads and utilizing GPU-to-GPU event waiting, the main thread will never pause, keeping the compute cores fed at absolute maximum capacity.
+### Phase 4: Full Hardware Asynchronous Pipelining
+Phase 3 still requires the CPU's main loop to synchronize and wait for the PCIe transfer to complete before delegating the disk write. Phase 4 introduces CUDA Hardware Events (`cudaEvent_t`), completely decoupling the CPU from the GPU streams. By moving all synchronization inside the background threads and utilizing GPU-to-GPU event waiting, the main thread never pauses, keeping the compute cores fed at absolute maximum capacity.
+*(For full hardware decoupling details, see `src/phase4_full_async/README.md`)*
 
 ## Performance Benchmarks & Hardware Analysis
 
-The following table details the compute time per temporal step (measured via hardware `cudaEvent_t` timestamps, completely isolating the GPU from CPU and disk I/O overhead). Data is aggregated over 10 execution trials.
+The following tables detail the compute time per temporal step (measured via hardware `cudaEvent_t` timestamps). Data is aggregated over 10 execution trials.
 
 | Grid Dimensions | Phase 1 (Global Memory) | Phase 2 (Shared Memory) | Speedup Factor |
 | :--- | :--- | :--- | :--- |
@@ -50,7 +51,18 @@ At a grid size of **4096 x 4096**, the simulation footprint explodes to ~134 MB.
 * Under these conditions, **Phase 1** collapses under the weight of its 5 redundant global memory fetches per thread. 
 * **Phase 2**, however, demonstrates its architectural superiority. By loading contiguous tiles into Shared Memory once, it completely bypasses the VRAM bandwidth bottleneck. The result is a robust **>3x hardware acceleration**, exemplifying the need for explicit cache management in production-scale simulations.
 
-### Discussion: Asynchronous I/O Overhead (Phase 3)
-When scaling up to the 4096 x 4096 grid and activating intensive disk I/O (dumping 16 million floats per frame), a synchronous pipeline would halt the GPU completely during PCIe and SSD transfers. 
+### Discussion: Asynchronous I/O and Hardware Limits (Phase 3 vs. Phase 4)
+When scaling up to the 4096 x 4096 grid and activating intensive disk I/O (dumping 16 million floats per frame), a synchronous pipeline would halt the GPU completely during PCIe and SSD transfers. By utilizing asynchronous execution streams, we can successfully overlap computation with memory transfers.
 
-Phase 3's asynchronous CPU delegation achieves an average compute time of **0.48 ± 0.01 ms** per step (over 10 trials). Compared to Phase 2's baseline of 0.40 ± 0.02 ms (which had zero I/O overhead), we observe a mere ~0.08 ms penalty per frame. The heavy lifting of disk writing is successfully offloaded to the background, demonstrating that PCIe transfers of Pinned Memory can be effectively overlapped with active compute kernels.
+| Grid Dimensions (I/O Enabled) | Phase 3 (Host Delegation) | Phase 4 (Hardware Events) |
+| :--- | :--- | :--- |
+| **4096 x 4096** | 0.48 ± 0.01 ms      | 0.47 ± 0.02 ms      |
+
+*(Note: The Phase 2 baseline with zero I/O overhead is 0.40 ± 0.02 ms)*
+
+Phase 3's asynchronous CPU delegation achieves an average compute time of 0.48 ms per step, representing a mere ~0.08 ms penalty per frame to completely hide the heavy SSD writes.
+
+However, moving from Phase 3's host-level decoupling to Phase 4's perfect hardware-level decoupling yields only a marginal improvement. The software architecture is flawless, but the pipeline has hit the physical limits of the hardware:
+
+1. **VRAM Controller Contention:** Because the stream overlap is now perfectly concurrent, the Streaming Multiprocessors (SMs) are furiously reading and writing to GDDR6 VRAM to calculate step $t_{n+1}$ at the *same time* the GPU's DMA engine is reading from that same VRAM to send step $t_n$ over the PCIe bus. Both components are fighting for the same physical memory controllers, creating a hardware-level traffic jam that slightly throttles the compute kernels.
+2. **PCIe Bus Saturation:** A 4096 x 4096 frame represents roughly 67 MB of data. Pushing this volume of data across the motherboard continuously saturates the bandwidth limits of the PCIe bus. Perfect software optimization cannot overcome this physical hardware ceiling.
