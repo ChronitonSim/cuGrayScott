@@ -30,12 +30,12 @@ While Phase 2 optimizes the compute kernel, the host-to-device data pipeline rem
 *(For flow execution and stream analysis, see `src/phase3_async/README.md`)*
 
 ### Phase 4: Full Hardware Asynchronous Pipelining
-Phase 3 still requires the CPU's main loop to synchronize and wait for the PCIe transfer to complete before delegating the disk write. Phase 4 introduces CUDA Hardware Events (`cudaEvent_t`), completely decoupling the CPU from the GPU streams. By moving all synchronization inside the background threads and utilizing GPU-to-GPU event waiting, the main thread never pauses, keeping the compute cores fed at absolute maximum capacity.
+Phase 3 still requires the CPU's main loop to synchronize and wait for the PCIe transfer to complete before delegating the disk write. Phase 4 introduces CUDA Hardware Events (`cudaEvent_t`) and a dedicated Device-to-Device snapshot buffer to prevent Write-After-Read (WAR) hazards. By moving all synchronization inside background threads and utilizing GPU-to-GPU event waiting, the main thread never pauses, keeping the compute cores fed at absolute maximum capacity.
 *(For full hardware decoupling details, see `src/phase4_full_async/README.md`)*
 
 ## Performance Benchmarks & Hardware Analysis
 
-The following tables detail the compute time per temporal step (measured via hardware `cudaEvent_t` timestamps). Data is aggregated over 10 execution trials.
+The following tables detail the compute time per temporal step (measured via hardware `cudaEvent_t` timestamps).
 
 | Grid Dimensions | Phase 1 (Global Memory) | Phase 2 (Shared Memory) | Speedup Factor |
 | :--- | :--- | :--- | :--- |
@@ -52,17 +52,17 @@ At a grid size of **4096 x 4096**, the simulation footprint explodes to ~134 MB.
 * **Phase 2**, however, demonstrates its architectural superiority. By loading contiguous tiles into Shared Memory once, it completely bypasses the VRAM bandwidth bottleneck. The result is a robust **>3x hardware acceleration**, exemplifying the need for explicit cache management in production-scale simulations.
 
 ### Discussion: Asynchronous I/O and Hardware Limits (Phase 3 vs. Phase 4)
-When scaling up to the 4096 x 4096 grid and activating intensive disk I/O (dumping 16 million floats per frame), a synchronous pipeline would halt the GPU completely during PCIe and SSD transfers. By utilizing asynchronous execution streams, we can successfully overlap computation with memory transfers.
+When scaling up to the 4096 x 4096 grid and activating intensive disk I/O (dumping 16.7 million floats per frame), a synchronous pipeline halts the GPU completely during PCIe and SSD transfers. By utilizing asynchronous execution streams, we successfully overlap computation with memory transfers.
 
 | Grid Dimensions (I/O Enabled) | Phase 3 (Host Delegation) | Phase 4 (Hardware Events) |
 | :--- | :--- | :--- |
-| **4096 x 4096** | 0.48 ± 0.01 ms      | 0.47 ± 0.02 ms      |
+| **4096 x 4096** | 0.872 ± 0.003 ms      | 0.826 ± 0.002 ms      |
 
-*(Note: The Phase 2 baseline with zero I/O overhead is 0.40 ± 0.02 ms)*
+Phase 3's asynchronous CPU delegation effectively hides the heavy SSD writes. However, moving from Phase 3's host-level decoupling to Phase 4's perfect hardware-level decoupling yields a noticeable reduction in compute time per step. 
 
-Phase 3's asynchronous CPU delegation achieves an average compute time of 0.48 ms per step, representing a mere ~0.08 ms penalty per frame to completely hide the heavy SSD writes.
+In Phase 3, the CPU's main thread physically halts to wait for stream synchronization, starving the GPU of instructions during those microsecond-level pauses. Phase 4 eliminates this starvation, keeping the compute stream permanently saturated and shaving off roughly 0.046 ms per step.
 
-However, moving from Phase 3's host-level decoupling to Phase 4's perfect hardware-level decoupling yields only a marginal improvement. The software architecture is flawless, but the pipeline has hit the physical limits of the hardware:
+Despite this perfect software decoupling, Phase 4's execution time illustrates the physical limits of the Ampere hardware:
 
-1. **VRAM Controller Contention:** Because the stream overlap is now perfectly concurrent, the Streaming Multiprocessors (SMs) are furiously reading and writing to GDDR6 VRAM to calculate step $t_{n+1}$ at the *same time* the GPU's DMA engine is reading from that same VRAM to send step $t_n$ over the PCIe bus. Both components are fighting for the same physical memory controllers, creating a hardware-level traffic jam that slightly throttles the compute kernels.
-2. **PCIe Bus Saturation:** A 4096 x 4096 frame represents roughly 67 MB of data. Pushing this volume of data across the motherboard continuously saturates the bandwidth limits of the PCIe bus. Perfect software optimization cannot overcome this physical hardware ceiling.
+1. **VRAM Controller Contention:** Because the stream overlap is perfectly concurrent, the Streaming Multiprocessors (SMs) are furiously reading and writing to GDDR6 VRAM to calculate step $t_{n+1}$ at the *same time* the GPU's DMA engine is reading the snapshot of $t_n$ to send over the PCIe bus. Both components fight for the same physical memory controllers, creating a hardware-level traffic jam that throttles the compute kernels.
+2. **PCIe Bus Saturation:** A 4096 x 4096 frame represents roughly 67 MB of data. Pushing this volume of data across the motherboard continuously saturates the bandwidth limits of the PCIe lanes. Perfect software optimization cannot overcome this physical hardware ceiling.
