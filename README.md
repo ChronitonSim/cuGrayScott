@@ -27,6 +27,10 @@ Phase 2 fundamentally restructures memory access by leveraging the Streaming Mul
 
 ### Phase 3: Asynchronous Pipelining (Planned)
 While Phase 2 optimizes the compute kernel, the host-to-device data pipeline remains strictly synchronous, bottlenecked by PCIe transfers and SSD I/O limits. Phase 3 introduces Asynchronous Execution. By allocating Pinned (Page-Locked) host memory and deploying concurrent CUDA Streams, the pipeline will hide file I/O latency entirely, allowing the GPU to compute $t_{n+1}$ simultaneously while the CPU writes $t_{n}$ to physical storage.
+*(For flow execution and stream analysis, see `src/phase3_async/README.md`)*
+
+### Phase 4: Full Hardware Asynchronous Pipelining (Planned)
+Phase 3 still requires the CPU's main loop to synchronize and wait for the PCIe transfer to complete before delegating the disk write. Phase 4 will introduce CUDA Hardware Events (`cudaEvent_t`), completely decoupling the CPU from the GPU streams. By moving all synchronization inside the background threads and utilizing GPU-to-GPU event waiting, the main thread will never pause, keeping the compute cores fed at absolute maximum capacity.
 
 ## Performance Benchmarks & Hardware Analysis
 
@@ -44,4 +48,9 @@ At a grid size of **256 x 256**, the performance of Phase 1 and Phase 2 is stati
 
 At a grid size of **4096 x 4096**, the simulation footprint explodes to ~134 MB. This thoroughly overwhelms the 5 MB L2 cache, forcing the hardware to continuously evict data and fetch cache lines across the board from the physical VRAM. 
 * Under these conditions, **Phase 1** collapses under the weight of its 5 redundant global memory fetches per thread. 
-* **Phase 2**, however, demonstrates its architectural superiority. By loading contiguous tiles into Shared Memory once, it completely bypasses the VRAM bandwidth bottleneck. The result is a robust **>3x hardware acceleration**, proving that explicit cache management is strictly required for production-scale, high-resolution scientific simulations.
+* **Phase 2**, however, demonstrates its architectural superiority. By loading contiguous tiles into Shared Memory once, it completely bypasses the VRAM bandwidth bottleneck. The result is a robust **>3x hardware acceleration**, exemplifying the need for explicit cache management in production-scale simulations.
+
+### Discussion: Asynchronous I/O Overhead (Phase 3)
+When scaling up to the 4096 x 4096 grid and activating intensive disk I/O (dumping 16 million floats per frame), a synchronous pipeline would halt the GPU completely during PCIe and SSD transfers. 
+
+Phase 3's asynchronous CPU delegation achieves an average compute time of **0.48 ± 0.01 ms** per step (over 10 trials). Compared to Phase 2's baseline of 0.40 ± 0.02 ms (which had zero I/O overhead), we observe a mere ~0.08 ms penalty per frame. The heavy lifting of disk writing is successfully offloaded to the background, demonstrating that PCIe transfers of Pinned Memory can be effectively overlapped with active compute kernels.
