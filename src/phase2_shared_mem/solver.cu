@@ -47,8 +47,8 @@ void grayScottKernelShared(
         for (int x {block_start_x}; x < Params::N_x; x += block_stride_x) {
             
             // Global thread indices.
-            int globalTx = block_start_x + tx;
-            int globalTy = block_start_y + ty;
+            int globalTx = x + tx;
+            int globalTy = y + ty;
             
             // --- Collaborative loading ---
             // For every stride step, every thread loads exactly 
