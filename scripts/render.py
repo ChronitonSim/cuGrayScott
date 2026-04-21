@@ -5,7 +5,7 @@ import glob
 import os
 
 # --- PARAMETERS ---
-N_X, N_Y = 256, 256
+N_X, N_Y = 4096, 4096
 FPS = 30
 MP4_FILENAME = "gray_scott_coral.mp4"
 
