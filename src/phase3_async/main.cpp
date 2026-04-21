@@ -91,7 +91,7 @@ int main() {
     // --- SIMULATION PARAMETERS ---
     constexpr int numSteps {1000};
     constexpr int outputFrequency {100}; 
-    constexpr bool ENABLE_IO {false};
+    constexpr bool ENABLE_IO {true};
 
     // --- HARDWARE GRID CONFIGURATION ---
     // Query the GPU hardware for the number of SMs.
@@ -106,7 +106,7 @@ int main() {
     dim3 blocksPerGrid = computeHardwareGridDimensions(sqBlockSize, numSMs, Params::N_x, Params::N_y);
 
     // --- CREATE OUTPUT DIRECTORY ---
-    std::string outDir = "../out_phase2";
+    std::string outDir = "../out_phase3";
     if (!std::filesystem::exists(outDir)) {
         std::filesystem::create_directories(outDir);
         std::cout << "Created output directory: " << outDir << "\n";
