@@ -67,17 +67,21 @@ int main() {
     // are still reading from it, we expose ourselves to race conditions.
     // Thus, we need two separate state arrays.
 
-    // Device pointers for the current time step n
+    // Device pointers for the current time step n.
     float* d_U;
     float* d_V;
-    // Device pointers for the next time step n + 1
+    // Device pointers for the next time step n + 1.
     float* d_next_U;
     float* d_next_V;
+    // Buffer device pointer for asynchronous
+    // CPU/GPU data transfer.
+    float* d_output_V;
 
     cudaCheck(cudaMalloc(reinterpret_cast<void**>(&d_U), bytes));
     cudaCheck(cudaMalloc(reinterpret_cast<void**>(&d_V), bytes));
     cudaCheck(cudaMalloc(reinterpret_cast<void**>(&d_next_U), bytes));
     cudaCheck(cudaMalloc(reinterpret_cast<void**>(&d_next_V), bytes));
+    cudaCheck(cudaMalloc(reinterpret_cast<void**>(&d_output_V), bytes));
 
     // Host-to-device data transfer.
     std::cout << "Copying initial state from host to device...\n";
@@ -172,6 +176,23 @@ int main() {
                 // result becomes available.
                 io_thread.wait();
 
+            // Make a device snapshot of the
+            // buffer (d_V) we intend to dump. 
+            // This is crucial since without it:
+            // 1. The CPU would swap d_V with d_next_V
+            // at the end of this loop.
+            // 2. The CPU would launch the next kernel,
+            // which would write to d_next_V, formerly
+            // d_V, while the buffer at that VRAM address
+            // was still being copied to the host.
+            cudaCheck(cudaMemcpyAsync(
+                d_output_V, 
+                d_V, 
+                bytes, 
+                cudaMemcpyDeviceToDevice,
+                computeStream
+            ));
+
             // --- GPU-TO-GPU SYNC ---
 
             // Drop a marker in the compute 
@@ -193,14 +214,15 @@ int main() {
             ));
             
             // Queue the async device-to-host
-            // copy in the transfer stream.
+            // copy in the transfer stream,
+            // using the snapshot buffer.
             // It won't begin until the
             // computeDoneEvent is reached.
             // Note: this leaverages on h_V 
             // being pinned memory.
             cudaCheck(cudaMemcpyAsync(
                 h_V, 
-                d_V, 
+                d_output_V, 
                 bytes, 
                 cudaMemcpyDeviceToHost,
                 transferStream
@@ -265,6 +287,7 @@ int main() {
     cudaCheck(cudaFree(d_V));
     cudaCheck(cudaFree(d_next_U));
     cudaCheck(cudaFree(d_next_V));
+    cudaCheck(cudaFree(d_output_V));
     cudaCheck(cudaStreamDestroy(computeStream));
     cudaCheck(cudaStreamDestroy(transferStream));
     cudaCheck(cudaEventDestroy(computeDoneEvent));
