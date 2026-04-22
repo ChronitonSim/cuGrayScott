@@ -1,5 +1,10 @@
 # CUDA Gray-Scott Reaction-Diffusion Engine
 
+
+<p align="center">
+    <img src="docs/art/coral_256x256.png" alt="coral_turing_pattern_256x256_grid" width="70%" >
+</p>
+
 ## Introduction
 This repository contains a high-performance, GPU-accelerated implementation of the Gray-Scott reaction-diffusion model. The Gray-Scott system describes the continuous complex spatial interactions between two chemical species ($U$ and $V$), capable of generating intricate, biologically-inspired Turing patterns (such as coral, mitosis, and labyrinthine structures). 
 
